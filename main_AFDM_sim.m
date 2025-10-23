@@ -37,8 +37,8 @@ M_mod = 4;  % size of QAM constellation
 N = 64;     % number of symbols(subcarriers)
 
 car_fre = 4*10^9;   % carrier frequency
-delta_f = 15*10^3;  % symbol spacing
-T = 1/delta_f;      % symbol duration
+delta_f = 15*10^3;  % symbol spacing    符号间距
+T = 1/delta_f;      % symbol duration   符号持续时间
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
 SNR_dB = 0:2:16;    % set SNR here
@@ -47,7 +47,7 @@ sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
 N_frame = 10000;    % number of simulation frames
 
-%% Generate synthetic delay-Doppler channel %%
+%% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 taps = 9;       % number of paths
 l_max = 3;      % maximum normalized delay index
 k_max = 4;      % maximum normalized Doppler index
@@ -73,15 +73,16 @@ c1 = (2*(max_Doppler+k_v)+1)/(2*N_data);    % equation (48) in [R1]
 c2 = 1/(N_data^2);
 
 %% Generate channel matrix %%
-% discrete-time channel
+% discrete-time channel 离散时间信道
 L_set = unique(delay_taps);
 gs=zeros(max_delay+1,N);      
 for q=0:N-1
     for i=1:taps
-        g_i=chan_coef(i);
-        l_i=delay_taps(i);
-        f_i=Doppler_freq(i);        
-        gs(l_i+1,q+1)=gs(l_i+1,q+1)+g_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
+        h_i=chan_coef(i);   % the complex gain
+        l_i=delay_taps(i);  % the integer delay associated with the i-th path,
+        f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
+        % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
+        gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
     end    
 end
 
@@ -108,7 +109,7 @@ for iesn0 = 1:length(SNR_dB)
         for q=1:N
             for l=(L_set+1)
                 if(q>=l)
-                    r(q)=r(q)+gs(l,q)*s_cpp(q-l+1);  %equation (18) in [R1]
+                    r(q)=r(q)+gs(l,q)*s_cpp(q-l+1);  %equation (22) in [R1]
                 end
             end
         end

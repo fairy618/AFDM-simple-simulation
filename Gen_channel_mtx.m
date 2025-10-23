@@ -34,9 +34,9 @@ Pi = [zeros(1,N-1) 1];
 Pi = toeplitz([Pi(1) fliplr(Pi(2:end))], Pi);   % equation (25) in [R1]
 H = zeros(N,N);
 for i = 1:taps
-    h_i = chan_coef(i);
-    l_i = delay_taps(i);
-    f_i = Doppler_freq(i);
+    h_i = chan_coef(i);     % the complex gain
+    l_i = delay_taps(i);    % the integer delay associated with the i-th path
+    f_i = Doppler_freq(i);  % Doppler shift (in digital frequencies)
     D_i = diag(exp(-1i*2*pi*f_i*(0:N-1)));
     for n = 0:N-1
         if n < l_i
@@ -48,3 +48,4 @@ for i = 1:taps
     G_i = diag(temp);   % equation (26) in [R1]
     H = H + h_i * G_i * D_i * Pi^l_i;
 end
+
