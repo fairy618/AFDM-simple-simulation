@@ -4,24 +4,24 @@ rng(1)
 
 %% System parameters %%
 M_mod = 2;  % size of QAM constellation
-N = 64;     % number of symbols(subcarriers)
+N = 16;     % number of symbols(subcarriers)
 
 car_fre = 4e9;   % carrier frequency
 delta_f = 15e3;  % symbol spacing    符号间距
 T = 1/delta_f;      % symbol duration   符号持续时间
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
-SNR_dB = 0:2:10;    % set SNR here
+SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 10000;    % number of simulation frames
+N_frame = 100000;    % number of simulation frames
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 k_max = 1;      % maximum normalized Doppler index
 
 figure();
-for delay_index = 2:4
+for delay_index = 1:3
     %% Start main simulation %%
     ber = zeros(size(SNR_dB));
     for iesn0 = 1:length(SNR_dB)
@@ -32,14 +32,14 @@ for delay_index = 2:4
         for iframe = 1:N_frame
 
             %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
-            taps = delay_index-1;       % number of paths
+            taps = delay_index+1;       % number of paths
             l_max = delay_index;      % maximum normalized delay index
             % k_max = 1;      % maximum normalized Doppler index
             chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
 
-            % delay_taps = randi(l_max, [1,taps]);
-            % delay_taps = sort(delay_taps-min(delay_taps));      % integer delay shifts: random delays in range [0,l_max-1]
-            delay_taps = randperm(l_max, taps) - 1;   % [0, l_max-1], unique
+            delay_taps = randi(l_max, [1,taps]);
+            delay_taps = sort(delay_taps-min(delay_taps));      % integer delay shifts: random delays in range [0,l_max-1]
+            % delay_taps = randperm(l_max, taps) - 1;   % [0, l_max-1], unique
             
             % Doppler_taps = k_max-2*k_max*rand(1,taps);          % fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
             Doppler_taps = k_max*(2*rand(1,taps)-1);                      % fractional Doppler
