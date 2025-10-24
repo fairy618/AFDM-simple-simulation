@@ -15,37 +15,34 @@ SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 10000;    % number of simulation frames
+N_frame = 100000;    % number of simulation frames
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 
 figure();
 for num_of_Path = 2:4
 
+    k_max = 1;                  % maximum normalized Doppler index
+    taps  = num_of_Path;        % number of paths
+    l_max = num_of_Path - 1;    % maximum normalized delay index
+
     ber = zeros(size(SNR_dB));
-
-    k_max = 1;      % maximum normalized Doppler index
-
-
     for iesn0 = 1:length(SNR_dB)
 
         sigma2 = sigma_2(iesn0);
-        err_count = zeros(size(N_frame));
 
+        err_count = zeros(size(N_frame));
         for iframe = 1:N_frame
 
             %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
-            taps = num_of_Path + 1;       % number of paths
-            l_max = num_of_Path;      % maximum normalized delay index
-            % k_max = 1;      % maximum normalized Doppler index
             chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
 
-            delay_taps = randi(l_max, [1,taps]);
-            delay_taps = sort(delay_taps-min(delay_taps));      % integer delay shifts: random delays in range [0,l_max-1]
-            % delay_taps = randperm(l_max, taps) - 1;   % [0, l_max-1], unique
+            %%% integer delay shifts: random delays in range [0,l_max-1]
+            delay_taps = randi(l_max, [1,taps]) - 1;
+            % delay_taps = sort(delay_taps-min(delay_taps));      
             
-            % Doppler_taps = k_max-2*k_max*rand(1,taps);          % fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
-            Doppler_taps = k_max*(2*rand(1,taps)-1);                      % fractional Doppler
+            %%% fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
+            Doppler_taps = k_max*(2*rand(1,taps)-1); 
             % Doppler_taps = round(Doppler_taps);     % cast to integer Doppler shifts
             Doppler_freq = Doppler_taps/(N*T);      % f=k/(NT),f:Doppler shifts(Hz),k:normalized Doppler shifts
 
