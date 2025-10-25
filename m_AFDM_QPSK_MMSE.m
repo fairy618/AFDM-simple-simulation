@@ -1,3 +1,5 @@
+%% FOR Fig. 10. BER and spectral efficiency performance of OFDM, OCDM, OTFS and AFDM using MMSE detection.
+
 clear; clc;
 % close all;
 rng(1)
@@ -13,17 +15,15 @@ T = 1/delta_f;  % symbol duration   符号持续时间
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
 SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
-sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
+sigma_2 = 1 ./ SNR;   % noise power
 
-N_frame = 1000;    % number of simulation frames
+N_frame = 10000;    % number of simulation frames
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 
-figure();
-
-%%% The maximum Doppler shift is αmax = 2, 
-%%% which corresponds to a speed of 540 km/h, 
-%%% and the Doppler shift of each path 
+%%% The maximum Doppler shift is αmax = 2,
+%%% which corresponds to a speed of 540 km/h,
+%%% and the Doppler shift of each path
 %%% is generated using Jakes Doppler spectrum
 k_max = 2;                  % maximum normalized Doppler index
 
@@ -33,6 +33,64 @@ taps  = 3;        % number of paths
 %%% The maximum delay spread is set to be lmax = 2.
 l_max = 2;    % maximum normalized delay index
 
+% chan_coef = 1/sqrt(2).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
+chan_coef = (randn(1,taps)+1i*randn(1,taps));
+chan_coef = chan_coef / norm(chan_coef);   % 归一化总功率为1
+
+fprintf("P = %d. Channel Power = %.2f.\n", taps, sum(abs(chan_coef).^2))
+
+%%% integer delay shifts: random delays in range [0,l_max-1]
+delay_taps = randi(l_max, [1,taps]) - 1;
+% delay_taps = sort(delay_taps-min(delay_taps));
+
+%%% fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
+% Doppler_taps = k_max*(2*rand(1,taps)-1);
+% % Doppler_taps = round(Doppler_taps);     % cast to integer Doppler shifts
+% Doppler_freq = Doppler_taps/(N*T);      % f=k/(NT),f:Doppler shifts(Hz),k:normalized Doppler shifts
+%%% the Doppler shift of each path is generated using Jakes Doppler spectrum
+fD_max = k_max / (N*T);  % 最大物理多普勒频移
+u = rand(1, taps);
+Doppler_freq = fD_max * sin(pi * (u - 0.5));   % 服从近似Jakes分布
+Doppler_taps = Doppler_freq * N*T;
+
+% fprintf("P=%d, Channel Power=%.2f\n", taps, sum(abs(chan_coef).^2));
+
+%% AFDM parameters %%
+max_Doppler = max(Doppler_taps);
+max_delay = max(delay_taps);
+
+CPP_len = max_delay;    % CPP_len >= l_max-1
+N_data = N-CPP_len;     % length of data symbols
+
+k_v = 1;    % guard interval to combat fractional Doppler shifts, see equation (38) in [R1]
+if (2*(max_Doppler+k_v)*(max_delay+1)+max_delay)>N_data
+    error('subcarrier orthogonality is not satisfied');
+end
+c1 = (2*(max_Doppler+k_v)+1)/(2*N_data);    % equation (48) in [R1]
+c2 = 1/(N_data^2);
+
+%% Generate channel matrix %%
+% discrete-time channel 离散时间信道
+L_set = unique(delay_taps);
+gs=zeros(max_delay+1,N);
+for q=0:N-1
+    for i=1:taps
+        h_i=chan_coef(i);   % the complex gain
+        l_i=delay_taps(i);  % the integer delay associated with the i-th path,
+        f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
+        % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
+        gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
+    end
+end
+
+% channel matrix form
+H = Gen_channel_mtx(N, taps, chan_coef, delay_taps, Doppler_freq, c1);  % equation (24) in [R1]
+% Observe the structure of H
+% imagesc(abs(H))
+
+
+figure();
+
 ber = zeros(size(SNR_dB));
 for iesn0 = 1:length(SNR_dB)
 
@@ -40,65 +98,11 @@ for iesn0 = 1:length(SNR_dB)
 
     err_count = zeros(size(N_frame));
     for iframe = 1:N_frame
-
-        %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
-        chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
-
-        %%% integer delay shifts: random delays in range [0,l_max-1]
-        delay_taps = randi(l_max, [1,taps]) - 1;
-        % delay_taps = sort(delay_taps-min(delay_taps));
-
-        %%% fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
-        % Doppler_taps = k_max*(2*rand(1,taps)-1);
-        % % Doppler_taps = round(Doppler_taps);     % cast to integer Doppler shifts
-        % Doppler_freq = Doppler_taps/(N*T);      % f=k/(NT),f:Doppler shifts(Hz),k:normalized Doppler shifts
-
-        %%% the Doppler shift of each path is generated using Jakes Doppler spectrum
-        fD_max = k_max / (N*T);  % 最大物理多普勒频移
-        u = rand(1, taps);
-        Doppler_freq = fD_max * sin(pi * (u - 0.5));   % 服从近似Jakes分布
-        Doppler_taps = Doppler_freq * N*T;
-
-        % fprintf("P=%d, Channel Power=%.2f\n", taps, sum(abs(chan_coef).^2));
-
-        %% AFDM parameters %%
-        max_Doppler = max(Doppler_taps);
-        max_delay = max(delay_taps);
-
-        CPP_len = max_delay;    % CPP_len >= l_max-1
-        N_data = N-CPP_len;     % length of data symbols
-
-        k_v = 1;    % guard interval to combat fractional Doppler shifts, see equation (38) in [R1]
-        if (2*(max_Doppler+k_v)*(max_delay+1)+max_delay)>N_data
-            error('subcarrier orthogonality is not satisfied');
-        end
-        c1 = (2*(max_Doppler+k_v)+1)/(2*N_data);    % equation (48) in [R1]
-        c2 = 1/(N_data^2);
-
-        %% Generate channel matrix %%
-        % discrete-time channel 离散时间信道
-        L_set = unique(delay_taps);
-        gs=zeros(max_delay+1,N);
-        for q=0:N-1
-            for i=1:taps
-                h_i=chan_coef(i);   % the complex gain
-                l_i=delay_taps(i);  % the integer delay associated with the i-th path,
-                f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
-                % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
-                gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
-            end
-        end
-
-        % channel matrix form
-        H = Gen_channel_mtx(N, taps, chan_coef, delay_taps, Doppler_freq, c1);  % equation (24) in [R1]
-        % Observe the structure of H
-        % imagesc(abs(H))
-
-
         %% Tx data generation %%
         x = randi([0, M_mod-1], N_data, 1);     % generate random bits
 
-        x_qam = qammod(x, M_mod, 'gray');   % QAM modulation
+        % x_qam = qammod(x, M_mod, 'gray');   % QAM modulation
+        x_qam = qammod(x, M_mod, 'gray', 'UnitAveragePower', true);
 
         s = AFDM_mod(x_qam, c1, c2);    % AFDM modulation
 
