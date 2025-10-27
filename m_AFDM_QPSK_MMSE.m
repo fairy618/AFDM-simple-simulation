@@ -3,7 +3,7 @@
 clear; clc;
 % close all;
 % rng(1)
-
+tic
 %% System parameters %%
 M_mod = 4;      % size of QAM constellation
 N = 256;        % number of symbols(subcarriers)
@@ -18,7 +18,14 @@ SNR = 10.^(SNR_dB/10);
 % sigma_2 = 1 ./ SNR;   % noise power
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 100000;    % number of simulation frames
+N_frame = 1000;    % number of simulation frames
+% N_frame = 100000; time = 15069s
+% N_frame = 10000;  time = 1519s
+% N_frame = 1000;   
+%    time = 69.03s      parfor for SNR
+%           52.00s      parfor for N_frame  [Bingo]
+%           136.84s     loop optimization
+%           149.87s     init
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 
@@ -70,6 +77,8 @@ end
 c1 = (2*(max_Doppler+k_v)+1)/(2*N_data);    % equation (48) in [R1]
 c2 = 1/(N_data^2);
 
+fprintf("max_Doppler = %d. max_delay = %d.\n\n", max_Doppler, max_delay);
+
 %% Generate channel matrix %%
 % discrete-time channel 离散时间信道
 L_set = unique(delay_taps);
@@ -84,13 +93,11 @@ for q=0:N-1
     end
 end
 
+
 % channel matrix form
 H = Gen_channel_mtx(N, taps, chan_coef, delay_taps, Doppler_freq, c1);  % equation (24) in [R1]
 % Observe the structure of H
 % imagesc(abs(H))
-
-
-figure();
 
 ber = zeros(size(SNR_dB));
 for iesn0 = 1:length(SNR_dB)
@@ -98,7 +105,7 @@ for iesn0 = 1:length(SNR_dB)
     sigma2 = sigma_2(iesn0);
 
     err_count = zeros(size(N_frame));
-    for iframe = 1:N_frame
+    parfor iframe = 1:N_frame
         %% Tx data generation %%
         x = randi([0, M_mod-1], N_data, 1);     % generate random bits
 
@@ -112,12 +119,16 @@ for iesn0 = 1:length(SNR_dB)
 
         %% Through delay-Doppler channel %%
         r=zeros(N,1);
-        for q=1:N
-            for l=(L_set+1)
-                if(q>=l)
-                    r(q)=r(q)+gs(l,q)*s_cpp(q-l+1);  %equation (22) in [R1]
-                end
-            end
+        % for q=1:N
+        %     for l=(L_set+1)
+        %         if(q>=l)
+        %             r(q)=r(q)+gs(l,q)*s_cpp(q-l+1);  %equation (22) in [R1]
+        %         end
+        %     end
+        % end
+        %%% Loop optimization
+        for l=(L_set+1)
+            r(l:N) = r(l:N) + gs(l, l:N).' .* s_cpp(1:N-l+1);
         end
         w = sqrt(sigma2/2) * (randn(size(s_cpp)) + 1i*randn(size(s_cpp)));    % add Gaussian noise
         r=r+w;
@@ -135,12 +146,13 @@ for iesn0 = 1:length(SNR_dB)
         %% Error count %%
         err_count(iframe) = sum(x_est_bit ~= x);    % calculate error bits
     end
-    ber(iesn0) = sum(err_count)/length(x)/N_frame;  % calculate bit error rate
+    ber(iesn0) = sum(err_count)/N_data/N_frame;  % calculate bit error rate
 end
 
 disp(ber)
 
 %% Plot bit error rate %%
+figure();
 semilogy(SNR_dB, ber)
 
 xlabel('SNR(dB)')
@@ -148,4 +160,5 @@ ylabel('BER')
 title('BER of AFDM systems')
 grid on
 
+toc
 
