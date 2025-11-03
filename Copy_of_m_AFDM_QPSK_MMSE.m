@@ -15,14 +15,12 @@ delta_f = 15e3;  % symbol spacing    符号间距
 T = 1/delta_f;  % symbol duration   符号持续时间
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
-SNR_dB = 0:2:2;    % set SNR here
+SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
 % sigma_2 = 1 ./ SNR;   % noise power
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 1;    % number of simulation frames
-
-trellis = poly2trellis(7,[171 133]);
+N_frame = 1000;    % number of simulation frames
 
 fprintf("Number of subcarriers : %d.\n", N);
 fprintf("Total bandwidth       : %.2fMHz.\n", B/1e6);
@@ -120,12 +118,10 @@ for iesn0 = 1:length(SNR_dB)
     err_count_OFDM = zeros(N_frame,1);
     err_count_OCDM = zeros(N_frame,1);
 
-    for iframe = 1:N_frame
+    parfor iframe = 1:N_frame
         %% Tx data generation %%
-        x = randi([0, 1], N_data, 1);     % generate random bits
-        tx_bits = de2bi(x, log2(M_mod), 'left-msb');
-        % x_qam = qammod(x, M_mod, 'gray', 'UnitAveragePower', true);
-        x_qam  = f_data_code(x, M_mod, trellis);    % QPSK
+        x = randi([0, M_mod-1], N_data, 1);     % generate random bits
+        x_qam = qammod(x, M_mod, 'gray', 'UnitAveragePower', true);
         w = sqrt(sigma2/2) * (randn(N, 1) + 1i*randn(N, 1));
 
         %% ========== AFDM chain ==========
@@ -149,9 +145,8 @@ for iesn0 = 1:length(SNR_dB)
         %%% AFDM demodulation
         y_afdm = AFDM_demod(x_est_no_cpp_afdm, c1, c2);
         x_est_bit_afdm = qamdemod(y_afdm, M_mod, 'gray');
-        rx_bits_afdm = de2bi(x_est_bit_afdm, log2(M_mod), 'left-msb');
         %%% Error count %%
-        err_count_AFDM(iframe) = sum(tx_bits(:) ~= rx_bits_afdm(:));
+        err_count_AFDM(iframe) = sum(x_est_bit_afdm ~= x);
 
         %% ========== OFDM chain ==========
         S_ofdm = ifft(x_qam, N_data_ofdm) * sqrt(N_data_ofdm/N);
@@ -189,8 +184,7 @@ for iesn0 = 1:length(SNR_dB)
         Xhat_k = (conj(H_f) ./ (abs(H_f).^2 + sigma2)) .* Y_k;
         y_ofdm = Xhat_k;   
         x_est_bit_ofdm = qamdemod(y_ofdm, M_mod, 'gray');
-        rx_bits_ofdm = de2bi(x_est_bit_ofdm, log2(M_mod), 'left-msb');
-        err_count_OFDM(iframe) = sum(tx_bits(:) ~= rx_bits_ofdm(:));
+        err_count_OFDM(iframe) = sum(x_est_bit_ofdm ~= x);
 
         % % % % % OFDM modulation: IFFT of data (length N_data)
         % % % % S_ofdm = ifft(x_qam, N_data);
@@ -241,13 +235,12 @@ for iesn0 = 1:length(SNR_dB)
         % OCDM demod: inverse DFnT
         y_ocdm = OCDM_demod(x_est_no_cpp_ocdm);
         x_est_bit_ocdm = qamdemod(y_ocdm, M_mod, 'gray');
-        rx_bits_afdm = de2bi(x_est_bit_ocdm, log2(M_mod), 'left-msb');
-        err_count_OCDM(iframe) = sum(tx_bits(:) ~= rx_bits_afdm(:));
+        err_count_OCDM(iframe) = sum(x_est_bit_ocdm ~= x);
         
     end
-    ber_AFDM(iesn0) = sum(err_count_AFDM)/(N_data * log2(M_mod) * N_frame);
-    ber_OFDM(iesn0) = sum(err_count_OFDM)/(N_data * log2(M_mod) * N_frame);
-    ber_OCDM(iesn0) = sum(err_count_OCDM)/(N_data * log2(M_mod) * N_frame);
+    ber_AFDM(iesn0) = sum(err_count_AFDM)/N_data/N_frame;
+    ber_OFDM(iesn0) = sum(err_count_OFDM)/N_data/N_frame;
+    ber_OCDM(iesn0) = sum(err_count_OCDM)/N_data/N_frame;
 
     fprintf('SNR=%2d dB done: AFDM=%.3e OFDM=%.3e OCDM=%.3e\n', SNR_dB(iesn0), ber_AFDM(iesn0), ber_OFDM(iesn0), ber_OCDM(iesn0));
 
