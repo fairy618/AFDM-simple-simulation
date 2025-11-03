@@ -176,9 +176,8 @@ err_unc = sum(bits_det_unc ~= info_bits);
 fprintf('我的错误比特数 = %d\n', err_unc);
 
 %% 我的代码
-SNR_dB = 20;
+SNR_dB = 31;
 sigma2 = 10.^(-SNR_dB/10);  % 归一化噪声方差
-
 info_bits = randi([0 1], N_data*log2(M_mod), 1);
 bits_reshape = reshape(info_bits, log2(M_mod), []).'; %
 sym_uncoded = bi2de(bits_reshape, 'left-msb');  %
@@ -191,7 +190,7 @@ r_afdm_unc = zeros(N,1);
 for l = (L_set+1)
     r_afdm_unc(l:N) = r_afdm_unc(l:N) + gs_local(l, l:N).' .* s_cpp_afdm_unc(1:N-l+1);
 end
-    w = sqrt(sigma2/2) * (randn(N, 1) + 1i*randn(N, 1));    
+    w = sqrt(sigma2/2) * (randn(N, 1) + 1i*randn(N, 1));
     r_afdm_unc = r_afdm_unc + w;
 % MMSE
 x_est_afdm_unc = H'/(H*H' + sigma2*eye(N)) * r_afdm_unc;
@@ -202,7 +201,3 @@ bits_det_unc = de2bi(sym_det_unc, log2(M_mod), 'left-msb').';
 bits_det_unc = bits_det_unc(:);
 err_unc = sum(bits_det_unc ~= info_bits);
 fprintf('我的错误比特数 = %d\n', err_unc);
-
-
-
-

@@ -6,7 +6,7 @@ clc;
 rng(7)
 tic
 %% System parameters %%
-M_mod = 4;      % size of QAM constellation
+M_mod = 64;      % size of QAM constellation
 N = 256;        % number of symbols(subcarriers)
 B = 10e6;
 
@@ -20,12 +20,17 @@ SNR = 10.^(SNR_dB/10);
 % sigma_2 = 1 ./ SNR;   % noise power
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 1000;    % number of simulation frames
+N_frame = 100000;    % number of simulation frames
+
+if floor(log2(M_mod)) ~= log2(M_mod)
+    error('M_mod must be a power of 2 for bit mapping.');
+end
 
 fprintf("Number of subcarriers : %d.\n", N);
 fprintf("Total bandwidth       : %.2fMHz.\n", B/1e6);
 fprintf("Symbol spacing        : %.2fkHz.\n", delta_f/1E3);
 fprintf("Symbol duration       : %.2fus.\n", T*1e6);
+
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 
@@ -116,44 +121,111 @@ end
 %% Loop Pre
 gsConst = parallel.pool.Constant(gs);
 
-%% Start Loop
-ber_AFDM  = zeros(size(SNR_dB));
+trellis = poly2trellis(7, [171 133]);   % constraint length 7, rate 1/2
+
+ber_uncoded = zeros(size(SNR_dB));
+ber_coded   = zeros(size(SNR_dB));
+
+%% loop begin
 for iesn0 = 1:length(SNR_dB)
     sigma2 = sigma_2(iesn0);
-    err_sum_AFDM = 0;
+    parErr = zeros(N_frame, 2);
     parfor iframe = 1:N_frame
-        %% Tx data generation
-        x = randi([0, M_mod-1], N_data, 1);     % generate random bits
-        x_qam = qammod(x, M_mod, 'gray', 'UnitAveragePower', true);
+        %% Random Data Generation
+        info_bits = randi([0 1], N_data*log2(M_mod), 1);
+        % Generate white noise
         w = sqrt(sigma2/2) * (randn(N, 1) + 1i*randn(N, 1));
 
-        %% ========== AFDM chain ==========
-        s_afdm = AFDM_mod(x_qam, c1, c2);%%% AFDM modulation
-        cpp_afdm = s_afdm(N_data-CPP_len:N_data-1).*exp(-1i*2*pi*c1*(N^2+2*N*(-CPP_len:-1).'));%%% generate CPP
-        s_cpp_afdm = [cpp_afdm; s_afdm];%%% Insert CPP
-        r_afdm = zeros(N,1);
+        %% AFDM uncode
+        % uncoded: data Modulation
+        bits_reshape = reshape(info_bits, log2(M_mod), []).';
+        sym_uncoded = bi2de(bits_reshape, 'left-msb');
+        x_qam_uncoded = qammod(sym_uncoded, M_mod, 'gray', 'UnitAveragePower', true);
+
+        % uncoded: data Transmit by AFDM
+        s_afdm_unc = AFDM_mod(x_qam_uncoded, c1, c2);
+        cpp_afdm_unc = s_afdm_unc(N_data-CPP_len:N_data-1).*exp(-1i*2*pi*c1*(N^2+2*N*(-CPP_len:-1).'));
+        s_cpp_afdm_unc = [cpp_afdm_unc; s_afdm_unc];
 
         gs_local = gsConst.Value;
+        r_afdm_unc = zeros(N,1);
         for l = (L_set+1)
-            r_afdm(l:N) = r_afdm(l:N) + gs_local(l, l:N).' .* s_cpp_afdm(1:N-l+1);%%% Through dela y-Doppler channel
+            r_afdm_unc(l:N) = r_afdm_unc(l:N) + gs_local(l, l:N).' .* s_cpp_afdm_unc(1:N-l+1);
         end
-        r_afdm = r_afdm + w;%%% Add AWGN
-        x_est_afdm = H'/(H*H'+sigma2*eye(N))*r_afdm;%%% MMSE equalization, ideal channel estimation
-        x_est_no_cpp_afdm = x_est_afdm(CPP_len+1:end);%%% discard CPP
-        y_afdm = AFDM_demod(x_est_no_cpp_afdm, c1, c2);%%% AFDM demodulation
-        x_est_bit_afdm = qamdemod(y_afdm, M_mod, 'gray');
-        err_sum_AFDM = err_sum_AFDM + sum(x_est_bit_afdm ~= x);%%% Error count
-    end
-    ber_AFDM(iesn0) = err_sum_AFDM / (N_data * N_frame);
-    fprintf('SNR=%2d dB done: AFDM=%.3e\n', SNR_dB(iesn0), ber_AFDM(iesn0));
+        r_afdm_unc = r_afdm_unc + w;
+
+        % MMSE
+        x_est_afdm_unc = H'/(H*H' + sigma2*eye(N)) * r_afdm_unc;
+        x_est_no_cpp_afdm_unc = x_est_afdm_unc(CPP_len+1:end);
+
+        y_afdm_unc = AFDM_demod(x_est_no_cpp_afdm_unc, c1, c2);
+        sym_det_unc = qamdemod(y_afdm_unc, M_mod, 'gray', 'UnitAveragePower', true);
+        bits_det_unc = de2bi(sym_det_unc, log2(M_mod), 'left-msb').';
+        bits_det_unc = bits_det_unc(:);
+        err_unc = sum(bits_det_unc ~= info_bits);
+        % fprintf('我的错误比特数 = %d\n', err_unc);
+
+        %% AFDM code
+        info_bits = randi([0 1], N_data*log2(M_mod)/2, 1);
+        % 卷积编码
+        coded_bits = convenc(info_bits, trellis); 
+        % 交织
+        matrix = reshape(coded_bits, log2(M_mod), []);
+        intlvddata = matintrlv(matrix, 2, log2(M_mod) / 2);
+        % QAM 调制
+        sym_coded =  bi2de(intlvddata','left-msb');
+        x_qam_coded = qammod(sym_coded, M_mod, 'gray', 'UnitAveragePower', true);
+        % AFDM 调制
+        s_afdm_coded = AFDM_mod(x_qam_coded, c1, c2);
+        cpp_afdm_coded = s_afdm_coded(N_data-CPP_len:N_data-1).*exp(-1i*2*pi*c1*(N^2+2*N*(-CPP_len:-1).'));
+        s_cpp_afdm_coded = [cpp_afdm_coded; s_afdm_coded];
+        % 信道衰落
+        r_afdm_coded = zeros(N,1);
+        for l = (L_set+1)
+            r_afdm_coded(l:N) = r_afdm_coded(l:N) + gs_local(l, l:N).' .* s_cpp_afdm_coded(1:N-l+1);
+        end
+        % 信道噪声
+        r_afdm_coded = r_afdm_coded + w;
+        % MMSE 信道检测
+        x_est_afdm_coded = H'/(H*H' + sigma2*eye(N)) * r_afdm_coded;   % MMSE
+        x_est_no_cpp_afdm_coded = x_est_afdm_coded(CPP_len+1:end);
+        % AFDM 解调
+        y_afdm_coded = AFDM_demod(x_est_no_cpp_afdm_coded, c1, c2);
+        % QAM 解调
+        sym_det_coded = qamdemod(y_afdm_coded, M_mod, 'gray', 'UnitAveragePower', true);
+        bits_det_coded = de2bi(sym_det_coded, log2(M_mod), 'left-msb').';
+         % 反交织
+        deinterleaved_bits = matdeintrlv(bits_det_coded, 2, log2(M_mod) / 2);
+        deinterleaved_bits = deinterleaved_bits(:);
+        decoded_bits = vitdec(deinterleaved_bits', trellis, 25, 'trunc', 'hard')';
+
+        err_coded = sum(decoded_bits ~= info_bits);
+
+        err_pair = [err_unc, err_coded];
+
+        parErr(iframe, :) = err_pair;
+    end  % parfor
+
+    err_sum_uncoded = sum(parErr(:,1));
+    err_sum_coded = sum(parErr(:,2));
+
+    ber_uncoded(iesn0) = err_sum_uncoded / (log2(M_mod) * N_data * N_frame);
+    ber_coded(iesn0)   = err_sum_coded   / (log2(M_mod) * N_data / 2 * N_frame); 
+
+    fprintf('SNR=%2d dB done: uncoded=%.3e, coded=%.3e\n', SNR_dB(iesn0), ber_uncoded(iesn0), ber_coded(iesn0));
 end
 
-%% Plot bit error rate %%
+% ---- 绘图比较（按 information-bit 的 BER 比较） ----
 figure;
-semilogy(SNR_dB, ber_AFDM, '-o', 'LineWidth', 1.2);
+semilogy(SNR_dB, ber_uncoded, '-o', 'LineWidth', 1.2); hold on;
+semilogy(SNR_dB, ber_coded, '-s', 'LineWidth', 1.2);
 grid on;
 xlabel('SNR (dB)');
-ylabel('Symbol error rate (per symbol)');
-title(sprintf("N=%d P=%d K=%d L=%d", N, taps, k_max, l_max));
+ylabel('Bit error rate (per info bit)');
+legend('Uncoded','Coded (conv + interleaver)');
+title(sprintf('N=%d taps=%d', N, taps));
 
 toc
+
+
+
