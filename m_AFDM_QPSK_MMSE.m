@@ -15,12 +15,12 @@ delta_f = 15e3;  % symbol spacing    符号间距
 T = 1/delta_f;  % symbol duration   符号持续时间
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
-SNR_dB = 0:2:2;    % set SNR here
+SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
 % sigma_2 = 1 ./ SNR;   % noise power
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 1;    % number of simulation frames
+N_frame = 10;    % number of simulation frames
 
 trellis = poly2trellis(7,[171 133]);
 
