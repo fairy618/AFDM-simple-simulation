@@ -44,9 +44,10 @@ fD_max = k_max / (N*T);  % 最大物理多普勒频移
 u = rand(1, taps);
 Doppler_freq = fD_max * sin(pi * (u - 0.5));   % 服从近似Jakes分布
 Doppler_taps = Doppler_freq * N*T;
-fprintf("Doppler_freq : %.2fkHz.\n", Doppler_freq);
+% fprintf("Doppler_freq : %.2fkHz.\n", Doppler_freq);
 Doppler_speed_ms = Doppler_freq * c / car_fre;
 Doppler_speed_kmh = Doppler_speed_ms * 3.6;
+fprintf("Doppler_speed_kmh：%.2f km/h.\n", Doppler_speed_kmh)
 
 % AFDM parameters
 max_Doppler = max(Doppler_taps);

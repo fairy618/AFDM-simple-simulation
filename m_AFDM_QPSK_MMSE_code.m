@@ -10,7 +10,7 @@ M_mod = 4;      % size of QAM constellation
 N = 256;        % number of symbols(subcarriers)
 B = 10e6;
 
-N_frame = 10;    % number of simulation frames
+N_frame = 10000;    % number of simulation frames
 
 if floor(log2(M_mod)) ~= log2(M_mod)
     error('M_mod must be a power of 2 for bit mapping.');
@@ -37,10 +37,6 @@ sigma_2_code = (abs(eng_sqrt)^2) ./ (SNR * k * Rc);
 % 
 % EsN0 = EbN0 .* (k * Rc);   % Es/N0 对应值
 % sigma_2 = 1 ./ EsN0;        % Es=1 时，sigma2 = N0, noise power per complex sample = N0
-
-
-
-
 
 % Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 k_max = 2;    %  maximum Doppler shift is αmax = 2
@@ -105,7 +101,7 @@ for iesn0 = 1:length(SNR_dB)
     sigma2 = sigma_2(iesn0);
     sigma2c = sigma_2_code(iesn0);
     parErr = zeros(N_frame, 2);
-    for iframe = 1:N_frame
+    parfor iframe = 1:N_frame
         %% Random Data Generation
         info_bits = randi([0 1], N_data*log2(M_mod), 1);
         % Generate white noise
