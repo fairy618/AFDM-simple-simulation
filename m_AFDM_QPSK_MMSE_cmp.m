@@ -10,7 +10,7 @@ N = 256;        % number of symbols(subcarriers)
 B = 10e6;
 c = 3e8;
 
-N_frame = 100;    % number of simulation frames
+N_frame = 10000;    % number of simulation frames
 
 if floor(log2(M_mod)) ~= log2(M_mod)
     error('M_mod must be a power of 2 for bit mapping.');
@@ -45,7 +45,7 @@ u = rand(1, taps);
 Doppler_freq = fD_max * sin(pi * (u - 0.5));   % 服从近似Jakes分布
 Doppler_taps = Doppler_freq * N*T;
 % fprintf("Doppler_freq : %.2fkHz.\n", Doppler_freq);
-Doppler_speed_ms = Doppler_freq * c / car_fre;
+Doppler_speed_ms = Doppler_freq * c / ( 2*car_fre) ;
 Doppler_speed_kmh = Doppler_speed_ms * 3.6;
 fprintf("Doppler_speed_kmh：%.2f km/h.\n", Doppler_speed_kmh)
 
