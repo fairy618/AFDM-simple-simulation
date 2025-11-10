@@ -5,62 +5,65 @@ clear; clc;
 rng(7)
 tic
 %% System parameters %%
-M_mod = 4;      % size of QAM constellation
-N = 256;        % number of symbols(subcarriers)
-B = 10e6;
+fc = 4e9;
+c = 3e8;
+lambda = c/fc;
 
-car_fre = 4e9;  % carrier frequency
-delta_f = 15e3;  % symbol spacing    符号间距
-% delta_f = B/N;  % symbol spacing    符号间距
-T = 1/delta_f;  % symbol duration   符号持续时间
+T_tap = 3.9e-6;
+fs = 1/T_tap;
+
+M_mod = 4;
+N = 256;
+
+T_sym = N * T_tap;
+delta_f = 1/T_sym;
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
-SNR_dB = 0:2:20;    % set SNR here
+SNR_dB = 0:2:20;  
 SNR = 10.^(SNR_dB/10);
-% sigma_2 = 1 ./ SNR;   % noise power
-sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
+sigma_2 = (abs(eng_sqrt)^2)./SNR;  
 
-N_frame = 10;    % number of simulation frames
+% Generate synthetic delay-Doppler channel
+k_max = 2;  % maximum normalized Doppler index
+taps  = 3;  % number of paths
+l_max = 2;  % maximum normalized delay index
 
+chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));  % 总能量固定
+
+delay_taps = randi(l_max, [1,taps]) - 1;
+
+fD_max = k_max / T_sym;  % 最大物理多普勒频移
+theta = (rand(1,taps)*2 - 1) * pi;   % uniform in [-pi, pi]
+Doppler_freq = fD_max * cos(theta);         % Hz
+Doppler_taps = Doppler_freq * T_sym;
+
+N_frame = 10; 
 trellis = poly2trellis(7,[171 133]);
 
-fprintf("Number of subcarriers : %d.\n", N);
-fprintf("Total bandwidth       : %.2fMHz.\n", B/1e6);
-fprintf("Symbol spacing        : %.2fkHz.\n", delta_f/1E3);
-fprintf("Symbol duration       : %.2fus.\n", T*1e6);
+%% -------- Summary printout --------
+v_max = (c/fc) * fD_max;    % 最大多普勒对应速度 (m/s)
+v_i   = (c/fc) * Doppler_freq;   % 每条路径的速度 (m/s)
 
-%% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
+fprintf('\n=========== System Summary ===========\n');
+fprintf('Carrier frequency (fc):       %.3f GHz\n', fc/1e9);
+fprintf('Wavelength (lambda):          %.4f m\n', lambda);
+fprintf('Delay-tap spacing (T_tap):    %.3f µs\n', T_tap*1e6);
+fprintf('Sampling rate (fs):           %.3f kHz\n', fs/1e3);
+fprintf('Symbol duration (T_sym):      %.3f µs\n', T_sym*1e6);
+fprintf('Subcarrier spacing (Δf):      %.3f Hz\n', delta_f);
+fprintf('Grid size (N):                %d\n', N);
+fprintf('Max. normalized Doppler (k_max): %d\n', k_max);
+fprintf('Max. physical Doppler (fD_max): %.3f Hz\n', fD_max);
+fprintf('Max. Doppler speed (v_max):   %.3f m/s  (%.3f km/h)\n', v_max, v_max*3.6);
+fprintf('Number of paths (taps):       %d\n', taps);
+fprintf('Max. normalized delay index (l_max): %d\n', l_max);
 
-%%% The maximum Doppler shift is αmax = 2,
-%%% which corresponds to a speed of 540 km/h,
-%%% and the Doppler shift of each path
-%%% is generated using Jakes Doppler spectrum
-k_max = 0;                  % maximum normalized Doppler index
-
-%%% We consider a 3-path channel.
-taps  = 1;        % number of paths
-
-%%% The maximum delay spread is set to be lmax = 2.
-l_max = 1;    % maximum normalized delay index
-
-chan_coef = 1/sqrt(2).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
-fprintf("P = %d. Channel Power = %.2f.\n", taps, sum(abs(chan_coef).^2))
-
-%%% integer delay shifts: random delays in range [0,l_max-1]
-delay_taps = randi(l_max, [1,taps]) - 1;
-% delay_taps = sort(delay_taps-min(delay_taps));
-fprintf("delay_taps:"); disp(delay_taps);
-
-%%% fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
-% Doppler_taps = k_max*(2*rand(1,taps)-1);
-% % Doppler_taps = round(Doppler_taps);     % cast to integer Doppler shifts
-% Doppler_freq = Doppler_taps/(N*T);      % f=k/(NT),f:Doppler shifts(Hz),k:normalized Doppler shifts
-%%% the Doppler shift of each path is generated using Jakes Doppler spectrum
-fD_max = k_max / (N*T);  % 最大物理多普勒频移
-u = rand(1, taps);
-Doppler_freq = fD_max * sin(pi * (u - 0.5));   % 服从近似Jakes分布
-Doppler_taps = Doppler_freq * N*T;
-fprintf("Doppler_freq : %.2fkHz.\n", Doppler_freq); 
+fprintf('\n---- Per-path Doppler info ----\n');
+for i = 1:taps
+    fprintf('Path %d: delay=%d, Doppler=%.3f Hz, speed=%.3f m/s (%.2f km/h), Doppler_tap=%.3f\n', ...
+        i, delay_taps(i), Doppler_freq(i), v_i(i), v_i(i)*3.6, Doppler_taps(i));
+end
+fprintf('================================\n\n');
 
 
 %% AFDM parameters %%
@@ -70,7 +73,7 @@ max_delay = max(delay_taps);
 CPP_len = max_delay;    % CPP_len >= l_max-1
 N_data = N-CPP_len;     % length of data symbols
 
-CP_len = ceil(max(delay_taps)) + 2; 
+CP_len = ceil(max(delay_taps)) + 2;
 N_data_ofdm = N - CP_len;
 
 k_v = 1;    % guard interval to combat fractional Doppler shifts, see equation (38) in [R1]
@@ -85,15 +88,12 @@ fprintf("max_Doppler = %.2f. max_delay = %d.\n\n", max_Doppler, max_delay);
 %% Generate channel matrix %%
 % discrete-time channel 离散时间信道
 L_set = unique(delay_taps);
+qq = 0:N-1; % 所有频率索引
+phase = exp(-1i*2*pi*(Doppler_freq(:) * qq));   % taps × N
+weighted = chan_coef(:) .* phase;  % taps × N
 gs=zeros(max_delay+1,N);
-for q=0:N-1
-    for i=1:taps
-        h_i=chan_coef(i);   % the complex gain
-        l_i=delay_taps(i);  % the integer delay associated with the i-th path,
-        f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
-        % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
-        gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
-    end
+for i = 1:taps
+    gs(delay_taps(i)+1, :) = gs(delay_taps(i)+1, :) + weighted(i, :);
 end
 
 
@@ -164,7 +164,7 @@ for iesn0 = 1:length(SNR_dB)
                 delay = delay_taps(i);
                 doppler = Doppler_freq(i);
                 if n > delay
-                    r_ofdm(n) = r_ofdm(n) + chan_coef(i)*exp(1j*2*pi*doppler*n*T)*scpp_ofdm(n-delay);
+                    r_ofdm(n) = r_ofdm(n) + chan_coef(i)*exp(1j*2*pi*doppler*n*T_tap)*scpp_ofdm(n-delay);
                 end
             end
         end
@@ -176,7 +176,7 @@ for iesn0 = 1:length(SNR_dB)
         % cpp_ofdm = S_ofdm(end-CPP_len+1:end);
         % scpp_ofdm = [cpp_ofdm; S_ofdm];
         % r_ofdm = zeros(N,1);
-        % for l=(L_set+1) 
+        % for l=(L_set+1)
         %     r_ofdm(l:N) = r_ofdm(l:N) + gs(l, l:N).' .* scpp_ofdm(1:N-l+1);
         % end
         % r_ofdm = r_ofdm + w;
@@ -187,7 +187,7 @@ for iesn0 = 1:length(SNR_dB)
         Y_k = fft(r_ofdm_no_cp, N_data);
         % MMSE per-subcarrier equalizer (scalar)
         Xhat_k = (conj(H_f) ./ (abs(H_f).^2 + sigma2)) .* Y_k;
-        y_ofdm = Xhat_k;   
+        y_ofdm = Xhat_k;
         x_est_bit_ofdm = qamdemod(y_ofdm, M_mod, 'gray');
         rx_bits_ofdm = de2bi(x_est_bit_ofdm, log2(M_mod), 'left-msb');
         err_count_OFDM(iframe) = sum(tx_bits(:) ~= rx_bits_ofdm(:));
@@ -202,20 +202,20 @@ for iesn0 = 1:length(SNR_dB)
         % % % %     r_ofdm(l:N) = r_ofdm(l:N) + gs(l, l:N).' .* scpp_ofdm(1:N-l+1);
         % % % % end
         % % % % r_ofdm = r_ofdm + w;
-        % % % % 
+        % % % %
         % % % % r_ofdm_no_cp = r_ofdm(CPP_len+1 : CPP_len+N_data);
-        % % % % 
+        % % % %
         % % % % % Frequency-domain channel on N_data points
         % % % % H_f = fft(H_FIR, N_data);    % length N_data
-        % % % % 
+        % % % %
         % % % % % FFT the received OFDM time-block
         % % % % Y_k = fft(r_ofdm_no_cp, N_data);
-        % % % % 
+        % % % %
         % % % % % MMSE per-subcarrier equalizer (scalar)
         % % % % % 注意 sigma2 已在外层定义为噪声方差
         % % % % % MMSE: Xhat_k = conj(H_k) ./ (|H_k|^2 + sigma2) .* Y_k
         % % % % Xhat_k = (conj(H_f) ./ (abs(H_f).^2 + sigma2)) .* Y_k;
-        % % % % 
+        % % % %
         % % % % % recover QAM symbols and demodulate
         % % % % y_ofdm = Xhat_k;   % frequency-domain estimated symbols
         % % % % x_est_bit_ofdm = qamdemod(y_ofdm, M_mod, 'gray');
@@ -243,7 +243,7 @@ for iesn0 = 1:length(SNR_dB)
         x_est_bit_ocdm = qamdemod(y_ocdm, M_mod, 'gray');
         rx_bits_afdm = de2bi(x_est_bit_ocdm, log2(M_mod), 'left-msb');
         err_count_OCDM(iframe) = sum(tx_bits(:) ~= rx_bits_afdm(:));
-        
+
     end
     ber_AFDM(iesn0) = sum(err_count_AFDM)/(N_data * log2(M_mod) * N_frame);
     ber_OFDM(iesn0) = sum(err_count_OFDM)/(N_data * log2(M_mod) * N_frame);
