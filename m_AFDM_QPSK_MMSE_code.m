@@ -10,7 +10,7 @@ M_mod = 4;      % size of QAM constellation
 N = 256;        % number of symbols(subcarriers)
 B = 10e6;
 
-N_frame = 10000;    % number of simulation frames
+N_frame = 100;    % number of simulation frames
 
 if floor(log2(M_mod)) ~= log2(M_mod)
     error('M_mod must be a power of 2 for bit mapping.');
@@ -23,7 +23,7 @@ T = 1/delta_f;  % symbol duration   符号持续时间
 k = log2(M_mod);
 Rc = 1/2;
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
-SNR_dB = -10:2:20;        
+SNR_dB = 0:2:20;        
 
 SNR = 10.^(SNR_dB/10);  % 符号能量/噪声功率
 sigma_2 = (abs(eng_sqrt)^2)./(SNR * k);   % noise power
