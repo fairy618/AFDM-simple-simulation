@@ -1,21 +1,32 @@
+% Fig 9a
+
 clear; clc;
 % close all;
 rng(1)
 
 %% System parameters %%
-M_mod = 2;  % size of QAM constellation
-N = 16;     % number of symbols(subcarriers)
+% The carrier frequency is 4 GHz.
+fc = 4e9;   % carrier frequency
+c = 3e8;
+lambda = c/fc;
+% The duration between two successive delay taps is approximately 41.6 μs
+T_tap = 41.6e-6;
+fs = 1/T_tap;
 
-car_fre = 4e9;   % carrier frequency
-delta_f = 15e3;  % symbol spacing    符号间距
-T = 1/delta_f;      % symbol duration   符号持续时间
+% N = 16 and BPSK
+M_mod = 2;
+N = 16;
+
+T_sym = N * T_tap;
+delta_f = 1/T_sym;
+
 
 eng_sqrt = (M_mod==2)+(M_mod~=2)*sqrt((M_mod-1)/6*(2^2));   % average power per symbol
 SNR_dB = 0:2:20;    % set SNR here
 SNR = 10.^(SNR_dB/10);
 sigma_2 = (abs(eng_sqrt)^2)./SNR;   % noise power
 
-N_frame = 100000;    % number of simulation frames
+N_frame = 1e5;    % number of simulation frames
 
 %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
 
@@ -32,21 +43,21 @@ for num_of_Path = 2:4
         sigma2 = sigma_2(iesn0);
 
         err_count = zeros(size(N_frame));
-        for iframe = 1:N_frame
+        parfor iframe = 1:N_frame
 
             %% Generate synthetic delay-Doppler channel %% 生成合成延迟-多普勒信道
-            chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));   % follows Rayleigh distribution
+            % follows Rayleigh distribution
+            chan_coef = 1/sqrt(2*taps).*(randn(1,taps)+1i.*randn(1,taps));  % 总能量固定
+            % chan_coef = 1/sqrt(2).*(randn(1,taps)+1i.*randn(1,taps));       % 每条路径独立随机
 
-            %%% integer delay shifts: random delays in range [0,l_max-1]
             delay_taps = randi(l_max, [1,taps]) - 1;
-            % delay_taps = sort(delay_taps-min(delay_taps));      
             
-            %%% fractional Doppler shifts: uniformly distributed Doppler shifts in range [-k_max,k_max]
-            Doppler_taps = k_max*(2*rand(1,taps)-1); 
-            % Doppler_taps = round(Doppler_taps);     % cast to integer Doppler shifts
-            Doppler_freq = Doppler_taps/(N*T);      % f=k/(NT),f:Doppler shifts(Hz),k:normalized Doppler shifts
+            fD_max = k_max / T_sym;  % 最大物理多普勒频移
+            theta = (rand(1,taps)*2 - 1) * pi;   % uniform in [-pi, pi]
+            Doppler_freq = fD_max * cos(theta);         % Hz
 
-            % fprintf("P=%d, Channel Power=%.2f\n", taps, sum(abs(chan_coef).^2));
+            Doppler_taps = Doppler_freq * T_sym;
+
 
             %% AFDM parameters %%
             max_Doppler = max(Doppler_taps);
@@ -65,16 +76,23 @@ for num_of_Path = 2:4
             %% Generate channel matrix %%
             % discrete-time channel 离散时间信道
             L_set = unique(delay_taps);
+            qq = 0:N-1; % 所有频率索引
+            phase = exp(-1i*2*pi*(Doppler_freq(:) * qq));   % taps × N
+            weighted = chan_coef(:) .* phase;  % taps × N
             gs=zeros(max_delay+1,N);
-            for q=0:N-1
-                for i=1:taps
-                    h_i=chan_coef(i);   % the complex gain
-                    l_i=delay_taps(i);  % the integer delay associated with the i-th path,
-                    f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
-                    % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
-                    gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
-                end
+            for i = 1:taps
+                gs(delay_taps(i)+1, :) = gs(delay_taps(i)+1, :) + weighted(i, :);
             end
+
+            % for q=0:N-1
+            %     for i=1:taps
+            %         h_i=chan_coef(i);   % the complex gain
+            %         l_i=delay_taps(i);  % the integer delay associated with the i-th path,
+            %         f_i=Doppler_freq(i);% Doppler shift (in digital frequencies)
+            %         % Dirac delta function 在零点以外的所有位置值为零，而在整个定义域上的积分值为1
+            %         gs(l_i+1,q+1)=gs(l_i+1,q+1)+h_i*exp(-1i*2*pi*f_i*q);  % equation (23) in [R1]
+            %     end
+            % end
 
             % channel matrix form
             H = Gen_channel_mtx(N, taps, chan_coef, delay_taps, Doppler_freq, c1);  % equation (24) in [R1]
@@ -117,13 +135,12 @@ for num_of_Path = 2:4
             %% Error count %%
             err_count(iframe) = sum(x_est_bit ~= x);    % calculate error bits
         end
-        ber(iesn0) = sum(err_count)/length(x)/N_frame;  % calculate bit error rate
+        ber(iesn0) = sum(err_count)/N/N_frame;  % calculate bit error rate
     end
-    
-    disp(ber)
 
-    %% Plot bit error rate %%
+    % Plot bit error rate %%
     fprintf("P=%d, ", num_of_Path);
+    disp(ber)
     semilogy(SNR_dB, ber)
     hold on
 
