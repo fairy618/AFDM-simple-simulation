@@ -17,19 +17,6 @@ function [dataOut] = demodOFDM(dataIn,cpLen,ofdmSym)
 % dataOut                        Output time domain symbols
 %
 %--------------------------------------------------------------------------
-%
-% Author: Bradley Bates
-% University of Bristol, UK
-% email address: bb16177@bristol.ac.uk
-% May 2020
-%
-% Code and algorithm originally from:
-%
-% Baher Mohammed (2020). OFDM signal generation, transmission and reception 
-% (https://www.mathworks.com/matlabcentral/fileexchange/28368-ofdm-signal-generation-transmission-and-reception)
-% MATLAB Central File Exchange. Retrieved May 10, 2020.
-%
-%--------------------------------------------------------------------------
 
 % OFDM receiever reshapes serial data to parallel
 parallelRx = reshape(dataIn, numel(dataIn)/ofdmSym, ofdmSym);

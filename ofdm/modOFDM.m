@@ -14,19 +14,6 @@ function [dataOut] = modOFDM(dataIn,numSC,cpLen,ofdmSym)
 % Function returns: 
 % dataOut                        Output OFDM symbols
 %--------------------------------------------------------------------------
-%
-% Author: Bradley Bates
-% University of Bristol, UK
-% email address: bb16177@bristol.ac.uk
-% May 2020
-%
-% Code and algorithm originally from:
-%
-% Baher Mohammed (2020). OFDM signal generation, transmission and reception 
-% (https://www.mathworks.com/matlabcentral/fileexchange/28368-ofdm-signal-generation-transmission-and-reception)
-% MATLAB Central File Exchange. Retrieved May 10, 2020.
-%
-%--------------------------------------------------------------------------
 
 % Calculate variables
 cyclicPrefix_start  = numSC - cpLen;
@@ -46,7 +33,5 @@ appendedCP = vertcat(cyclicPrefix_data, ifftSubcarrier);
 
 % Convert to serial
 dataOut = reshape(appendedCP,[numel(appendedCP),1]);
-
-
 
 end
