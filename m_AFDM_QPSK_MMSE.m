@@ -107,6 +107,15 @@ H = Gen_channel_mtx(N, taps, chan_coef, delay_taps, Doppler_freq, c1);  % equati
 % Observe the structure of H
 % imagesc(abs(H))
 
+h_time = zeros(N_data_ofdm,1);
+for l = (L_set+1)
+    h_time(l) = sum(gs(l,1));  % 简化：取平均或第一个时刻的通道增益
+end
+H_freq = fft(h_time, N_data_ofdm);  % 频域信道响应（N_data_ofdm×1 向量）
+H_freq_Const = parallel.pool.Constant(H_freq);
+
+
+
 %% Start Loop
 ber_AFDM  = zeros(size(EbN0_dB));
 ber_OFDM  = zeros(size(EbN0_dB));
@@ -118,7 +127,7 @@ for iesn0 = 1:length(EbN0_dB)
     err_count_AFDM = zeros(N_frame,1);
     err_count_OFDM = zeros(N_frame,1);
 
-    parfor iframe = 1:N_frame
+    for iframe = 1:N_frame
         % Tx data generation %%
         x = randi([0, M-1], N, 1);
         x_qam = qammod(x, M, 'gray', 'UnitAveragePower', true);
@@ -148,14 +157,22 @@ for iesn0 = 1:length(EbN0_dB)
         s_ofdm = ifft(x_qam(1:N_data_ofdm), N_data_ofdm, 1);
         cp_ofdm = s_ofdm(end-Ncp+1:end);
         s_cp_ofdm = [cp_ofdm; s_ofdm];
-        % 待添加信道
-        w_ofdm = sqrt(sigma2 / (2*N_data_ofdm)) * (randn(N, 1) + 1i*randn(N, 1));
-        r_ofdm = s_cp_ofdm + w_ofdm;
-        x_est_ofdm = r_ofdm;
-        x_est_no_cpp_ofdm = x_est_ofdm(Ncp+1:end);
-        y_ofdm = fft(x_est_no_cpp_ofdm, N_data_ofdm, 1);
 
-        x_est_bit_ofdm = qamdemod(y_ofdm, M, 'gray', 'UnitAveragePower', true);
+        r_ofdm = zeros(N,1);
+        for l = (L_set+1)
+            r_ofdm(l:N) = r_ofdm(l:N) + gs_local(l, l:N).' .* s_cp_ofdm(1:N-l+1);
+        end
+
+        w_ofdm = sqrt(sigma2/2) * (randn(N,1) + 1i*randn(N,1));
+        r_ofdm = r_ofdm + w_ofdm;
+
+        r_ofdm_no_cp = r_ofdm(Ncp+1:end);
+        y_ofdm = fft(r_ofdm_no_cp, N_data_ofdm, 1);
+
+        N0 = sigma2;
+        X_hat = 1;%(conj(H_freq_Const) ./ (abs(H_freq_Const).^2 + N0)) .* y_ofdm;
+
+        x_est_bit_ofdm = qamdemod(X_hat, M, 'gray', 'UnitAveragePower', true);
 
         err_count_OFDM(iframe) = sum(x(1:N_data_ofdm) ~= x_est_bit_ofdm);
     end
